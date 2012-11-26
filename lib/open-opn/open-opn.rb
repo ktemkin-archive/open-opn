@@ -4,8 +4,20 @@ require 'serialport'
 require_relative 'digest/crc16_opn'
 
 require_relative 'packets/request_time'
+require_relative 'packets/request_set_time'
 
 module OpenOPN
+
+  #TODO: move us
+  class OPNError < RuntimeError
+  end
+
+  class BadResponseError < OPNError
+  end
+  
+  class FailedOperationError < OPNError
+  end
+
 
   # Communications class for the OPN-2001 Barcode scanner
   class Device
@@ -32,11 +44,7 @@ module OpenOPN
     #
     def time
       #Parse the raw time into a binary time structure...
-      #raw_time = send_command(:get_time) 
-      #time = Packets::ReseponseTime.new(raw_time)
       time = send_request(Packets::RequestTime.new)
-
-      p time
 
       #And convert that to a ruby time.
       time.to_time()
@@ -45,23 +53,51 @@ module OpenOPN
     #
     #Set the scanner's current date and time.
     #
-    def time=(time)
-      
+    def time=(time, allow_failures=false)
+
+      #Create a packet which should set the scanner's current time.
+      request = Packets::RequestSetTime.from_time(time)
+    
+      #Set the time on the scanner, and retrieve the scanner's newly-set reported time.
+      new_time = send_request(request).to_time()
+
+      #If the time was not correctly set, throw an error...
+      unless new_time.tv_sec == time.tv_sec || allow_failures
+        raise FailedOperationError.new("Tried to set the scanner's time to #{time.inspect}, but got back #{new_time.inspect}.")
+      end
+
+      new_time
     end
 
-
+    #
+    # Reads a collection of bytes from the barcode scanner directly.
+    #
     def read
       @serial_port.read()
     end
 
+    #
+    # Sends a given packet
+    # 
     def send_request(request)
 
-      #send the packet over the serial line, and request a response
+      #send the request packet over the serial line
       write(request.with_checksum())
-      raw_response = read.force_encoding('UTF-8')
 
-      #convert the response into the proper response format
-      request.response_format.new(raw_response)
+      #if this packet expects a response
+      unless request.response_format.nil?
+        #read the response
+        raw_response = read.force_encoding('UTF-8')
+
+        #force it into the proper format
+        response = request.response_format.new(raw_response)
+
+        unless response.valid?
+          raise BadResponseError.new("A response from the scanner failed its checksum- was #{response.checksum.inspect}, should have been #{response.computed_checksum.inspect}.\n #{response.inspect}")
+        end
+
+        response
+      end
 
     end
 

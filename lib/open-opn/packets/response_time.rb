@@ -1,5 +1,6 @@
 
 require 'bit-struct'
+require_relative 'packet'
 
 module OpenOPN
   module Packets
@@ -7,9 +8,9 @@ module OpenOPN
     #
     # Represents Date/Time objects in the OPN2001 format.
     #
-    class ResponseTime < BitStruct
+    class ResponseTime < Packet
 
-      unsigned :command,   24, "Header"
+      char     :command,      24, "Command"
 
       unsigned :second,   8,  "Seconds past the minute"
       unsigned :minute,   8,  "Minutes past the hour"
@@ -20,7 +21,7 @@ module OpenOPN
       unsigned :year,     8,  "Year (last two digits)"
 
       unsigned :eof,      8,  "End of Frame"
-      unsigned :checksum, 16, "CRC-16/OPN"
+      char     :checksum, 16, "CRC-16/OPN"
 
       #
       # Converts the given Time object to a ruby time.
